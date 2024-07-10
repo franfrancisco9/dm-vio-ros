@@ -27,6 +27,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/CompressedImage.h>
 #include <sensor_msgs/Imu.h>
 #include "cv_bridge/cv_bridge.h"
 
@@ -248,22 +249,22 @@ double convertStamp(const ros::Time& time)
     return time.sec * 1.0 + time.nsec / 1000000000.0;
 }
 
-void vidCb(const sensor_msgs::ImageConstPtr img)
+void vidCb(const sensor_msgs::CompressedImageConstPtr& compressed_img)
 {
-    double stamp = convertStamp(img->header.stamp) + timeshift;
+    double stamp = convertStamp(compressed_img->header.stamp) + timeshift;
 
-    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+    // Convert the compressed image to a cv::Mat
+    cv_bridge::CvImagePtr cv_ptr = cv_bridge::toCvCopy(compressed_img, sensor_msgs::image_encodings::MONO8);
     assert(cv_ptr->image.type() == CV_8U);
     assert(cv_ptr->image.channels() == 1);
 
-    MinimalImageB minImg((int) cv_ptr->image.cols, (int) cv_ptr->image.rows, (unsigned char*) cv_ptr->image.data);
-    // Unfortunately the image message does not contain exposure. This means that you cannot use photometric
-    // mode 1. But mode 0 will entirely disable the vignette which is far from optimal for fisheye cameras.
-    // You can use the new mode 3 however which uses vignette, but does not assume that a full photometric
-    // calibration is available.
-    // Alternatively, if exposure is published on a different topic you can synchronize them an pass the exposure to
-    // undistorter->undistort in the next line.
-    std::unique_ptr<ImageAndExposure> undistImg(undistorter->undistort<unsigned char>(&minImg, 1.0, stamp, 1.0f));
+    MinimalImageB minImg(static_cast<int>(cv_ptr->image.cols), static_cast<int>(cv_ptr->image.rows), static_cast<unsigned char*>(cv_ptr->image.data));
+
+    // Unfortunately the image message does not contain exposure. This means that you cannot use photometric calibration mode 1.
+    // But mode 0 will entirely disable the vignette which is far from optimal for fisheye cameras.
+    // You can use the new mode 3 however which uses vignette, but does not assume that a full photometric calibration is available.
+    // Alternatively, if exposure is published on a different topic you can synchronize them and pass it to undistorter->undistort in the next line.
+    std::unique_ptr<ImageAndExposure> undistImg(undistorter->undistort<unsigned char>(&minImg, 1.0, 1));
 
     imuInt.addImage(std::move(undistImg), stamp);
 }
@@ -299,7 +300,7 @@ void loadFromRosbag()
     {
         if(m.getTopic() == imageTopic || ("/" + m.getTopic() == imageTopic))
         {
-            sensor_msgs::Image::ConstPtr img = m.instantiate<sensor_msgs::Image>();
+            sensor_msgs::CompressedImage::ConstPtr img = m.instantiate<sensor_msgs::CompressedImage>();
             if(img != nullptr)
             {
                 vidCb(img);
@@ -316,6 +317,7 @@ void loadFromRosbag()
     bag.close();
     finishedLoading = true;
 }
+
 
 int main(int argc, char** argv)
 {
