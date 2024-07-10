@@ -387,8 +387,8 @@ int main(int argc, char** argv)
         viewer = std::make_unique<IOWrap::PangolinDSOViewer>(wG[0], hG[0], true, settingsUtil, normalizeCamSize);
     }
 
-    imageTopic = nh.resolveName("cam0/image_raw");
-    imuTopic = nh.resolveName("imu0");
+    imageTopic = nh.resolveName("oak/left/image_raw/compressed");
+    imuTopic = nh.resolveName("oak/imu/data");
     std::cout << "Image topic: " << imageTopic << std::endl;
     std::cout << "IMU topic: " << imuTopic << std::endl;
 
@@ -398,8 +398,8 @@ int main(int argc, char** argv)
     ros::Subscriber imuSub;
     if(rosbagFile == "")
     {
-        imageSub = nh.subscribe("cam0/image_raw", 3, &vidCb);
-        imuSub = nh.subscribe("imu0", 50, &imuCb);
+        imageSub = nh.subscribe("oak/left/image_raw/compressed", 3, &vidCb);
+        imuSub = nh.subscribe("oak/imu/data", 50, &imuCb);
     }
 
     ros::spin();
