@@ -1,5 +1,5 @@
 
-This was adapted from the original ROS wrapper and adjusted to work on Ubuntu 22.04 ROS2 Humble. 
+This was adapted from the original ROS wrapper and adjusted to work on Ubuntu 22.04 ROS2 Humble for live running on compressed image topics from an OAK camera. You can change the code easily to raw images in `main.cpp`.
 
 To build in 22.04, follow the instructions in `https://github.com/lukasvst/dm-vio`. Note that for the 22.04 workstation make sure to be in a python 3.10 environment and you will have to change to `#include <limits>` at the top of the file in the Pangolin folder:
 ```bash
