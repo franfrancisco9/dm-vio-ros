@@ -22,25 +22,21 @@
 
 #include "ROSOutputWrapper.h"
 #include <GTSAMIntegration/PoseTransformationIMU.h>
-#include <std_msgs/Int32.h>
-#include "dmvio_ros/DMVIOPoseMsg.h"
+#include <std_msgs/msg/int32.hpp>
+#include "dmvio_ros2/msg/dmvio_pose_msg.hpp"
 #include <util/FrameShell.h>
-#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 
 using namespace dmvio;
 
 dmvio::ROSOutputWrapper::ROSOutputWrapper()
-        : nh("dmvio")
+        : nh(rclcpp::Node::make_shared("dmvio"))
 {
-    systemStatePublisher = nh.advertise<std_msgs::Int32>("system_status", 10);
-    dmvioPosePublisher = nh.advertise<dmvio_ros::DMVIOPoseMsg>("frame_tracked", 10);
-    unscaledPosePublisher = nh.advertise<geometry_msgs::PoseStamped>("unscaled_pose", 10);
-    // While we publish the metric pose for convenience we don't recommend using it.
-    // The reason is that the scale used for generating it might change over time.
-    // Usually it is better to save the trajectory and multiply all of it with the newest scale.
-    metricPosePublisher = nh.advertise<geometry_msgs::PoseStamped>("metric_pose", 10);
+    systemStatePublisher = nh->create_publisher<std_msgs::msg::Int32>("system_status", 10);
+    dmvioPosePublisher = nh->create_publisher<dmvio_ros2::msg::DMVIOPoseMsg>("frame_tracked", 10);
+    unscaledPosePublisher = nh->create_publisher<geometry_msgs::msg::PoseStamped>("unscaled_pose", 10);
+    metricPosePublisher = nh->create_publisher<geometry_msgs::msg::PoseStamped>("metric_pose", 10);
 }
-
 
 void ROSOutputWrapper::publishTransformDSOToIMU(const TransformDSOToIMU& transformDSOToIMUPassed)
 {
@@ -50,20 +46,17 @@ void ROSOutputWrapper::publishTransformDSOToIMU(const TransformDSOToIMU& transfo
                                                                    std::make_shared<bool>(false),
                                                                    std::make_shared<bool>(false));
     scaleAvailable = lastSystemStatus == SystemStatus::VISUAL_INERTIAL;
-    // You could also publish the new scale (and potentially gravity direction) here already if you want to use it as
-    // soon as possible. For this simple ROS wrapper I decided to publish it bundled with the newest tracked pose as
-    // this is when it is usually needed.
 }
 
 void ROSOutputWrapper::publishSystemStatus(dmvio::SystemStatus systemStatus)
 {
-    std_msgs::Int32 msg;
+    std_msgs::msg::Int32 msg;
     msg.data = static_cast<int>(systemStatus);
-    systemStatePublisher.publish(msg);
+    systemStatePublisher->publish(msg);
     lastSystemStatus = systemStatus;
 }
 
-void setMsgFromSE3(geometry_msgs::Pose& poseMsg, const Sophus::SE3d& pose)
+void setMsgFromSE3(geometry_msgs::msg::Pose& poseMsg, const Sophus::SE3d& pose)
 {
     poseMsg.position.x = pose.translation()[0];
     poseMsg.position.y = pose.translation()[1];
@@ -76,20 +69,19 @@ void setMsgFromSE3(geometry_msgs::Pose& poseMsg, const Sophus::SE3d& pose)
 
 void ROSOutputWrapper::publishCamPose(dso::FrameShell* frame, dso::CalibHessian* HCalib)
 {
-    dmvio_ros::DMVIOPoseMsg msg;
-    msg.header.stamp = ros::Time(frame->timestamp);
+    dmvio_ros2::msg::DMVIOPoseMsg msg;
+    msg.header.stamp = rclcpp::Time(frame->timestamp);
     msg.header.frame_id = "world";
 
     auto& camToWorld = frame->camToWorld;
 
-    geometry_msgs::Pose& poseMsg = msg.pose;
+    geometry_msgs::msg::Pose& poseMsg = msg.pose;
     setMsgFromSE3(poseMsg, camToWorld);
 
-    // Also publish unscaled pose on its own (e.g. for visualization in Rviz).
-    geometry_msgs::PoseStamped unscaledMsg;
+    geometry_msgs::msg::PoseStamped unscaledMsg;
     unscaledMsg.header = msg.header;
     unscaledMsg.pose = poseMsg;
-    unscaledPosePublisher.publish(unscaledMsg);
+    unscaledPosePublisher->publish(unscaledMsg);
 
     {
         std::unique_lock<std::mutex> lk(mutex);
@@ -97,16 +89,13 @@ void ROSOutputWrapper::publishCamPose(dso::FrameShell* frame, dso::CalibHessian*
         {
             msg.scale = transformDSOToIMU->getScale();
 
-            // Publish scaled pose.
-            geometry_msgs::PoseStamped scaledMsg;
+            geometry_msgs::msg::PoseStamped scaledMsg;
             scaledMsg.header = msg.header;
 
-            // Transform to metric imu to world. Note that we need to use the inverse as transformDSOToIMU expects
-            // worldToCam as an input!
             Sophus::SE3d imuToWorld(transformDSOToIMU->transformPose(camToWorld.inverse().matrix()));
             setMsgFromSE3(scaledMsg.pose, imuToWorld);
 
-            metricPosePublisher.publish(scaledMsg);
+            metricPosePublisher->publish(scaledMsg);
         }else
         {
             msg.scale = std::numeric_limits<double>::quiet_NaN();
@@ -116,14 +105,13 @@ void ROSOutputWrapper::publishCamPose(dso::FrameShell* frame, dso::CalibHessian*
         if(transformDSOToIMU)
         {
             Sophus::SO3d gravityDirection = transformDSOToIMU->getR_dsoW_metricW();
-            msg.rotationMetricToDSO.x = gravityDirection.unit_quaternion().x();
-            msg.rotationMetricToDSO.y = gravityDirection.unit_quaternion().y();
-            msg.rotationMetricToDSO.z = gravityDirection.unit_quaternion().z();
-            msg.rotationMetricToDSO.w = gravityDirection.unit_quaternion().w();
-            setMsgFromSE3(msg.imuToCam, transformDSOToIMU->getT_cam_imu());
+            msg.rotation_metric_to_dso.x = gravityDirection.unit_quaternion().x();
+            msg.rotation_metric_to_dso.y = gravityDirection.unit_quaternion().y();
+            msg.rotation_metric_to_dso.z = gravityDirection.unit_quaternion().z();
+            msg.rotation_metric_to_dso.w = gravityDirection.unit_quaternion().w();
+            setMsgFromSE3(msg.imu_to_cam, transformDSOToIMU->getT_cam_imu());
         }
     }
 
-    dmvioPosePublisher.publish(msg);
+    dmvioPosePublisher->publish(msg);
 }
-

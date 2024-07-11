@@ -1,11 +1,19 @@
 
-# ROS-Wrapper for DM-VIO: Delayed Marginalization Visual-Inertial Odometry
+This was adapted from the original ROS wrapper and adjusted towork on Ubuntu 22.04 ROS2 Humble. 
+
+To build in 22.04, follow the instructions in `https://github.com/lukasvst/dm-vio`. Note that for the 22.04 workstation make sure to be in a python 3.10 environment and you will have to change to `#include <limits>` at the top of the file in the Pangolin folder:
+```bash
+# from the buid Pangolin
+nano ../include/pangolin/gl/colour.h
+```
+
+# ROS2-Wrapper for DM-VIO: Delayed Marginalization Visual-Inertial Odometry
 
 For more information see https://vision.in.tum.de/dm-vio and https://github.com/lukasvst/dm-vio.
 
-This is a ROS-Wrapper for DM-VIO, inspired by the [ROS-Wrapper for DSO](https://github.com/JakobEngel/dso_ros).
+This is a ROS2-Wrapper for DM-VIO, inspired by the [ROS-Wrapper for DSO](https://github.com/JakobEngel/dso_ros).
 
-It interfaces with ROS topics to input images and IMU data and to output poses.
+It interfaces with ROS2 topics to input images and IMU data and to output poses.
 Alternatively, it can read images and IMU data directly from a rosbag dataset.
 
 #### Related Papers
@@ -29,7 +37,7 @@ Then you can clone this project into your workspace and build normally with `cat
 
 You can run with 
 
-    rosrun dmvio_ros node calib=/PATH/TO/camera.txt \
+    ros2 run dmvio_ros2 dmvio_ros2_node calib=/PATH/TO/camera.txt \
                           imuCalib=/PATH_TO/camchain.yaml \
                           settingsFile=/PATH_TO/dm-vio-public/configs/t265_noise_tumvi.yaml \
                           mode=1 nogui=0 preset=1 quiet=1 
@@ -57,22 +65,23 @@ You need to create the `camera.txt` file using
 
 Then you can run the following commands in separate terminals
 
-    rosrun dmvio_ros node calib=/PATH/TO/camera.txt settingsFile=/PATH/TO/dm-vio/configs/euroc.yaml mode=1 nogui=0 preset=1 useimu=1 quiet=1 init_requestFullResetNormalizedErrorThreshold=0.8 init_pgba_skipFirstKFs=1
+    ros2 run dmvio_ros2 dmvio_ros2_node calib=/PATH/TO/camera.txt settingsFile=/PATH/TO/dm-vio/configs/euroc.yaml mode=1 nogui=0 preset=1 useimu=1 quiet=1 init_requestFullResetNormalizedErrorThreshold=0.8 init_pgba_skipFirstKFs=1
 
-    rosbag play V2_01_easy.bag
-
+    ros2 bag play bag_to_test
 
 #### New: Now you can also run in non-realtime mode on rosbags
 
 For EuRoC, simply run the following command in a terminal. (Make sure that roscore is running in a separate terminal.)
 
-    rosrun dmvio_ros node calib=/PATH/TO/camera.txt settingsFile=/PATH/TO/dm-vio/configs/euroc.yaml mode=1 nogui=0 preset=1 useimu=1 quiet=1 init_requestFullResetNormalizedErrorThreshold=0.8 init_pgba_skipFirstKFs=1 rosbag=/PATH/TO/V2_01_easy.bag loadRosbagThread=1
+    ros2 run dmvio_ros2 dmvio_ros2_node calib=/PATH/TO/camera.txt settingsFile=/PATH/TO/dm-vio/configs/euroc.yaml mode=1 nogui=0 preset=1 useimu=1 quiet=1 init_requestFullResetNormalizedErrorThreshold=0.8 init_pgba_skipFirstKFs=1 rosbag=/PATH/TO/V2_01_easy.bag loadRosbagThread=1
 
 
 This command will run as fast as possible and exit once execution is complete, which makes it useful to run on rosbag 
 datasets. If a dataset is available as a rosbag, this is more convenient than extracting the rosbag and running the non-ros 
 version of DM-VIO. However, keep in mind that ROS does not support exposure times out of the box, which can result in 
 slightly worse accuracy compared to a dataset with full photometric calibration (including exposure times).
+
+Did not test the example below:
 
 #### Example 2: Running on Realense T265
 You can run on the Realsense T265 with their provided ROS driver. Install it with

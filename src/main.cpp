@@ -24,11 +24,11 @@
 * along with DM-VIO. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include <ros/ros.h>
-#include <sensor_msgs/image_encodings.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/CompressedImage.h>
-#include <sensor_msgs/Imu.h>
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/image_encodings.hpp>
+#include <sensor_msgs/msg/image.hpp>
+#include <sensor_msgs/msg/compressed_image.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include "cv_bridge/cv_bridge.h"
 
 #include <thread>
@@ -39,7 +39,6 @@
 #include "IOWrapper/Output3DWrapper.h"
 
 #include "util/Undistort.h"
-
 
 #include <boost/thread.hpp>
 #include "dso/util/settings.h"
@@ -58,8 +57,10 @@
 #include "ROSOutputWrapper.h"
 
 #include <live/FrameContainer.h>
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <rosbag2_cpp/readers/sequential_reader.hpp>
+#include <rosbag2_cpp/serialization_format_converter_factory.hpp>
+#include <rosbag2_storage_default_plugins/sqlite/sqlite_storage.hpp>
 
 #ifdef STACKTRACE
 
@@ -97,8 +98,8 @@ bool finishedLoading = false;
 
 std::string imageTopic, imuTopic;
 
-void vidCb(const sensor_msgs::ImageConstPtr img);
-void imuCb(const sensor_msgs::ImuConstPtr imu);
+void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr img);
+void imuCb(const sensor_msgs::msg::Imu::SharedPtr imu);
 void loadFromRosbag();
 
 void run(IOWrap::PangolinDSOViewer* viewer)
@@ -238,18 +239,18 @@ void run(IOWrap::PangolinDSOViewer* viewer)
     printf("DELETE FULLSYSTEM!\n");
     fullSystem.reset();
 
-    ros::shutdown();
+    rclcpp::shutdown();
 
     printf("EXIT NOW!\n");
 }
 
-double convertStamp(const ros::Time& time)
+double convertStamp(const rclcpp::Time& time)
 {
     // We need the timstamp in seconds as double
-    return time.sec * 1.0 + time.nsec / 1000000000.0;
+    return time.seconds();
 }
 
-void vidCb(const sensor_msgs::CompressedImageConstPtr& compressed_img)
+void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr compressed_img)
 {
     double stamp = convertStamp(compressed_img->header.stamp) + timeshift;
 
@@ -269,7 +270,7 @@ void vidCb(const sensor_msgs::CompressedImageConstPtr& compressed_img)
     imuInt.addImage(std::move(undistImg), stamp);
 }
 
-void imuCb(const sensor_msgs::ImuConstPtr imu)
+void imuCb(const sensor_msgs::msg::Imu::SharedPtr imu)
 {
     std::vector<float> accData;
     accData.push_back(imu->linear_acceleration.x);
@@ -281,7 +282,7 @@ void imuCb(const sensor_msgs::ImuConstPtr imu)
     gyrData.push_back(imu->angular_velocity.y);
     gyrData.push_back(imu->angular_velocity.z);
 
-    ros::Time time = imu->header.stamp;
+    rclcpp::Time time = imu->header.stamp;
     double timestamp = convertStamp(time);
     imuInt.addAccData(accData, timestamp);
     imuInt.addGyrData(gyrData, timestamp);
@@ -290,31 +291,39 @@ void imuCb(const sensor_msgs::ImuConstPtr imu)
 void loadFromRosbag()
 {
     dmvio::TimeMeasurement meas("RosbagLoading");
-    rosbag::Bag bag;
-    bag.open(rosbagFile, rosbag::bagmode::Read);
 
-    std::vector<std::string> topics;
-    topics.push_back(imageTopic);
-    topics.push_back(imuTopic);
-    for(auto&& m : rosbag::View(bag, rosbag::TopicQuery(topics)))
+    auto bag_reader = std::make_shared<rosbag2_cpp::readers::SequentialReader>();
+    rosbag2_storage::StorageOptions storage_options;
+    storage_options.uri = rosbagFile;
+    storage_options.storage_id = "sqlite3";
+
+    rosbag2_cpp::ConverterOptions converter_options;
+    converter_options.input_serialization_format = "cdr";
+    converter_options.output_serialization_format = "cdr";
+
+    bag_reader->open(storage_options, converter_options);
+
+    while (bag_reader->has_next())
     {
-        if(m.getTopic() == imageTopic || ("/" + m.getTopic() == imageTopic))
+        auto msg = bag_reader->read_next();
+        if (msg->topic_name == imageTopic)
         {
-            sensor_msgs::CompressedImage::ConstPtr img = m.instantiate<sensor_msgs::CompressedImage>();
-            if(img != nullptr)
-            {
-                vidCb(img);
-            }
-        }else if(m.getTopic() == imuTopic || ("/" + m.getTopic() == imuTopic))
+            auto img = std::make_shared<sensor_msgs::msg::CompressedImage>();
+            rclcpp::Serialization<sensor_msgs::msg::CompressedImage> serialization;
+            rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
+            serialization.deserialize_message(&serialized_msg, img.get());
+            vidCb(img);
+        }
+        else if (msg->topic_name == imuTopic)
         {
-            sensor_msgs::ImuConstPtr imuData = m.instantiate<sensor_msgs::Imu>();
-            if(imuData != nullptr)
-            {
-                imuCb(imuData);
-            }
+            auto imuData = std::make_shared<sensor_msgs::msg::Imu>();
+            rclcpp::Serialization<sensor_msgs::msg::Imu> serialization;
+            rclcpp::SerializedMessage serialized_msg(*msg->serialized_data);
+            serialization.deserialize_message(&serialized_msg, imuData.get());
+            imuCb(imuData);
         }
     }
-    bag.close();
+
     finishedLoading = true;
 }
 
@@ -330,8 +339,8 @@ int main(int argc, char** argv)
     sigaction(SIGSEGV, &sa, NULL);
 #endif
 
-    ros::init(argc, argv, "DMVIO_ros");
-    ros::NodeHandle nh;
+    rclcpp::init(argc, argv);
+    auto nh = std::make_shared<rclcpp::Node>("DMVIO_ros");
 
     setlocale(LC_ALL, "C");
 
@@ -387,22 +396,22 @@ int main(int argc, char** argv)
         viewer = std::make_unique<IOWrap::PangolinDSOViewer>(wG[0], hG[0], true, settingsUtil, normalizeCamSize);
     }
 
-    imageTopic = nh.resolveName("oak/left/image_raw/compressed");
-    imuTopic = nh.resolveName("oak/imu/data");
+    imageTopic = "oak/left/image_raw/compressed";
+    imuTopic = "oak/imu/data";
     std::cout << "Image topic: " << imageTopic << std::endl;
     std::cout << "IMU topic: " << imuTopic << std::endl;
 
     std::thread runThread = std::thread(boost::bind(run, viewer.get()));
 
-    ros::Subscriber imageSub;
-    ros::Subscriber imuSub;
+    rclcpp::Subscription<sensor_msgs::msg::CompressedImage>::SharedPtr imageSub;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imuSub;
     if(rosbagFile == "")
     {
-        imageSub = nh.subscribe("oak/left/image_raw/compressed", 3, &vidCb);
-        imuSub = nh.subscribe("oak/imu/data", 50, &imuCb);
+        imageSub = nh->create_subscription<sensor_msgs::msg::CompressedImage>("oak/left/image_raw/compressed", 3, vidCb);
+        imuSub = nh->create_subscription<sensor_msgs::msg::Imu>("oak/imu/data", 50, imuCb);
     }
 
-    ros::spin();
+    rclcpp::spin(nh);
     stopSystem = true;
     frameContainer.stop();
 

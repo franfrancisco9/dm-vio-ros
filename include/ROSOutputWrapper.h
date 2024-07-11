@@ -24,7 +24,10 @@
 #define DMVIO_ROS_ROSOUTPUTWRAPPER_H
 
 #include <IOWrapper/Output3DWrapper.h>
-#include <ros/ros.h>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/int32.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <dmvio_ros2/msg/dmvio_pose_msg.hpp>
 #include <mutex>
 
 namespace dmvio
@@ -57,7 +60,6 @@ public:
      */
     virtual void publishSystemStatus(dmvio::SystemStatus systemStatus) override;
 
-
     /* Usage:
      * Called once for each tracked frame, with the real-time, low-delay frame pose.
      *
@@ -69,8 +71,11 @@ public:
     // In case you want to additionally publish pointclouds or keyframe poses you need to override Output3DWrapper::publishKeyframes
 
 private:
-    ros::NodeHandle nh;
-    ros::Publisher dmvioPosePublisher, systemStatePublisher, unscaledPosePublisher, metricPosePublisher;
+    rclcpp::Node::SharedPtr nh;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr systemStatePublisher;
+    rclcpp::Publisher<dmvio_ros2::msg::DMVIOPoseMsg>::SharedPtr dmvioPosePublisher;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr unscaledPosePublisher;
+    rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr metricPosePublisher;
 
     // Protects transformDSOToIMU.
     std::mutex mutex;
