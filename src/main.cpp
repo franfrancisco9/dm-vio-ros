@@ -98,8 +98,8 @@ bool finishedLoading = false;
 
 std::string imageTopic, imuTopic;
 
-void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr img);
-void imuCb(const sensor_msgs::msg::Imu::SharedPtr imu);
+void vidCb(const sensor_msgs::msg::CompressedImage::ConstPtr img);
+void imuCb(const sensor_msgs::msg::Imu::ConstPtr imu);
 void loadFromRosbag();
 
 void run(IOWrap::PangolinDSOViewer* viewer)
@@ -250,7 +250,7 @@ double convertStamp(const rclcpp::Time& time)
     return time.nanoseconds() / 1000000000.0;
 }
 
-void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr compressed_img)
+void vidCb(const sensor_msgs::msg::CompressedImage::ConstPtr compressed_img)
 {
     double stamp = convertStamp(compressed_img->header.stamp) + timeshift;
 
@@ -270,7 +270,7 @@ void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr compressed_img)
     imuInt.addImage(std::move(undistImg), stamp);
 }
 
-void imuCb(const sensor_msgs::msg::Imu::SharedPtr imu)
+void imuCb(const sensor_msgs::msg::Imu::ConstPtr imu)
 {
     std::vector<float> accData;
     accData.push_back(imu->linear_acceleration.x);
