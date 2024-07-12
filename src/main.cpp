@@ -247,7 +247,7 @@ void run(IOWrap::PangolinDSOViewer* viewer)
 double convertStamp(const rclcpp::Time& time)
 {
     // We need the timstamp in seconds as double
-    return time.seconds();
+    return time.nanoseconds() / 1000000000.0;
 }
 
 void vidCb(const sensor_msgs::msg::CompressedImage::SharedPtr compressed_img)
